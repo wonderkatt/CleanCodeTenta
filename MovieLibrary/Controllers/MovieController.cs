@@ -1,61 +1,64 @@
-using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using MovieLibrary.DTO;
+using MovieLibrary.Entities;
+using MovieLibrary.Helpers;
+using RestSharp;
 
 namespace MovieLibrary.Controllers
 {
-    public class Movie
-    {
-        public string id { get; set; }
-        public string title { get; set; }
-        public string rated { get; set; }
-    }
-
     [ApiController]
     [Route("[controller]")]
-    public class MovieController
+    public class MovieController : Controller
     {
-        static HttpClient client = new HttpClient();
+     
+        private const string BASE_URL = "https://ithstenta2020.s3.eu-north-1.amazonaws.com";
+        [HttpGet]
+        [Route("/movies")]
+        public ActionResult GetDetailedList(bool orderByAscending = true)
+        {
+            var top100List = GetTop100MovieList();
+            var parsedMovieList = GetDetailedMovies();
+            var listToOrder = ListSorter.CombineMovieListsWithioutDoubles(parsedMovieList, top100List);
+            var orderedList = ListSorter.orderList(orderByAscending, listToOrder);
+            var listOfTitles = new List<string>();
+            foreach (var movie in orderedList)
+            {
+                listOfTitles.Add(movie.title);
+            }
+            return Ok(listOfTitles);
+        }
+
+        private static List<Movie> GetDetailedMovies()
+        {
+            var url = BASE_URL + "/detailedMovies.json";
+            var client = new RestClient(url);
+            var request = new RestRequest();
+            var response = client.Get<List<MovieDTO>>(request);
+            var data = response.Data;
+            var parsedMovieList = StringParser.ParseMovieList(data);
+            return parsedMovieList;
+        }
 
         [HttpGet]
-        [Route("/toplist")]
-        public IEnumerable<string> Toplist(bool asc = true)
-        {
-            List<string> res = new List<string>();
-            var r = client.GetAsync("https://ithstenta2020.s3.eu-north-1.amazonaws.com/topp100.json").Result;
-            var ml = JsonSerializer.Deserialize<List<Movie>>(new StreamReader(r.Content.ReadAsStream()).ReadToEnd());
-            //Sort ml
-            if (asc)
-            {
-                ml.OrderBy(e => e.rated);
-            }
-            else
-            {
-                ml.OrderByDescending(e => e.rated);
-            }
-            foreach (var m in ml) {
-                res.Add(m.title);
-            }
-            //result.Add(new StreamReader(response.Content.ReadAsStream()).ReadToEnd());
-            return res;
-        }
-        
-        [HttpGet]
         [Route("/movie")]
-        public Movie GetMovieById(string id) {
-            var r = client.GetAsync("https://ithstenta2020.s3.eu-north-1.amazonaws.com/topp100.json").Result;
-            var ml = JsonSerializer.Deserialize<List<Movie>>(new StreamReader(r.Content.ReadAsStream()).ReadToEnd());
-            foreach (var m in ml) {
-                if (m.id.Equals((id)))
-                {
-                    return m; //Found it!
-                }
-            }
-            return null;
+        public ActionResult GetMovieById(string id)
+        {
+            var top100List = GetTop100MovieList();
+            var detailedMovieList = GetDetailedMovies();
+            var combinedList = ListSorter.CombineMovieListsWithioutDoubles(detailedMovieList, top100List);
+            return Ok(combinedList.FirstOrDefault(movie => movie.id == id));
+        }
+
+        private List<Movie> GetTop100MovieList()
+        {
+            var url = BASE_URL + "/topp100.json";
+            var client = new RestClient(url);
+            var request = new RestRequest();
+            var response = client.Get<List<MovieDTO>>(request);
+            var data = response.Data;
+            return StringParser.ParseMovieList(data);
         }
     }
 }
